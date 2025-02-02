@@ -1,8 +1,8 @@
-package com.noslen.transaction_reader.dto;
+package com.noslen.transaction_reader.model;
 
 import java.time.LocalDate;
 
-public record Transaction(LocalDate postDate, String description, double debit) {
+public record Transaction(LocalDate postDate, String description, double debit, double credit, double balance, String classification ) {
     // Optionally, include validation logic in the constructor:
 
     //    public Transaction {
