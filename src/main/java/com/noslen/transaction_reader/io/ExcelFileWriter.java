@@ -19,7 +19,7 @@ public class ExcelFileWriter {
         try (FileInputStream fis = new FileInputStream(budgetFilePath);
              Workbook workbook = new XSSFWorkbook(fis)) {
 
-            Sheet sheet = workbook.getSheet("2025"); // Assuming we're updating the 2025 sheet
+            Sheet sheet = workbook.getSheet("2025");
 
             for (Map.Entry<LocalDate, Map<String, Double>> entry : mappedTransactions.entrySet()) {
                 LocalDate transactionDate = entry.getKey();
@@ -90,10 +90,10 @@ public class ExcelFileWriter {
 
         Cell cell = row.getCell(columnIndex, Row.MissingCellPolicy.CREATE_NULL_AS_BLANK);
 
-        String referenceColumn = amount < 0 ? "W" : "X"; // W for debits, X for credits
+        String referenceColumn = amount < 0 ? "Z" : "AA"; // W for debits, X for credits
         int excelRowIndex = rowIndex + 1; // Excel rows are 1-based
 
-        String newFormula = "=" + referenceColumn + excelRowIndex;
+        String newFormula = referenceColumn + excelRowIndex;
 
         // If the cell already has a formula, append the new reference
         if (cell.getCellType() == CellType.FORMULA) {

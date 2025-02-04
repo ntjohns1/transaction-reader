@@ -15,7 +15,7 @@ import java.util.List;
 
 public class InputParser {
 
-    private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("M/d/yyyy");
+    private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("M/d/yy");
 
     public static List<Transaction> parseTransactions() {
         List<Transaction> transactions = new ArrayList<>();
@@ -42,9 +42,10 @@ public class InputParser {
                     String classification = nextLine.length > 8 ? nextLine[8].trim() : "";
 
                     // Create Transaction object
-                    transactions.add(new Transaction(postDate, description, debit, credit, balance, classification));
+                    transactions.add(new Transaction(postDate, description, debit, credit, balance));
 
                 } catch (Exception e) {
+                    e.printStackTrace();
                     System.err.println("Skipping invalid row: " + String.join(",", nextLine));
                 }
             }
