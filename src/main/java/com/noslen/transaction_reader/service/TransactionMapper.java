@@ -7,40 +7,40 @@ import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class TransactionMapper {
 
     private final CliService cliService;
     private final Config config;
     private final Map<String, String> categoryMap;
+    private final List<String> categoryList;
 
     public TransactionMapper(CliService cliService) {
         this.cliService = cliService;
         this.config = Config.getInstance();
-
         this.categoryMap = config.loadCategoryMappings();
-
+        this.categoryList = config.getCategoryList();
     }
 
     public Map<LocalDate, Map<String, Double>> mapTransactions(List<Transaction> transactions) {
         Map<LocalDate, Map<String, Double>> mappedData = new HashMap<>();
 
         for (Transaction transaction : transactions) {
-            LocalDate date = transaction.postDate();
-            String category = transaction.classification();
+            LocalDate date = transaction.getPostDate();
+            String description = transaction.getDescription();
 
-            // Check if category exists or needs user input
-            if (category == null || category.isBlank()) {
-                category = categoryMap.getOrDefault(transaction.description(),
-                                                    cliService.promptForCategory(transaction.description(), config.getCategoryList()));
-                categoryMap.put(transaction.description(), category); // Save mapping
+            // Ignore transaction.category & only use Excel-derived categories
+            String category = categoryMap.get(description);
+
+            if (category == null || !categoryList.contains(category)) {
+                category = cliService.promptForCategory(transaction, categoryList);
+                categoryMap.put(description, category); // Save for future mappings
+                config.saveCategoryMappings(categoryMap); // Persist mappings
             }
 
-            // Save updated category mapping to Config
-            config.saveCategoryMappings(categoryMap);
-
             // Handle debit/credit logic
-            double amount = transaction.debit() > 0 ? -transaction.debit() : transaction.credit();
+            double amount = transaction.getDebit() > 0 ? -transaction.getDebit() : transaction.getCredit();
 
             // Insert into mapped data
             mappedData.putIfAbsent(date, new HashMap<>());
