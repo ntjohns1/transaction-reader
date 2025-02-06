@@ -6,27 +6,35 @@ import com.noslen.transaction_reader.io.InputParser;
 import com.noslen.transaction_reader.model.Transaction;
 import com.noslen.transaction_reader.service.CliService;
 import com.noslen.transaction_reader.service.TransactionMapper;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
-import java.time.LocalDate;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 public class TransactionReaderApplication {
+    private static final Logger logger = LogManager.getLogger(TransactionReaderApplication.class);
 
-	public static void main(String[] args) {
-		// Step 1: Parse transactions
-		List<Transaction> transactions = InputParser.parseTransactions();
+    public static void main(String[] args) {
+        logger.info("Starting Transaction Reader Application...");
+        try {
+            // Step 1: Parse transactions from test CSV
+            List<Transaction> transactions = InputParser.parseTransactions();
+            logger.info("Parsed {} transactions from test CSV.",
+                        transactions.size());
+            ExcelFileWriter excelWriter = new ExcelFileWriter();
+            // Step 2: Map transactions to categories
+			CliService CliService = new CliService();
+			TransactionMapper mapper = new TransactionMapper(CliService);
+			mapper.categorizeTransactions(transactions);
+            excelWriter.appendTransactionsToTable(transactions);
+            excelWriter.saveWorkbook();
+            logger.info("Transactions written to output file successfully.");
 
-		// Step 2: Map transactions to rows/categories
-		CliService CliService = new CliService();
-		TransactionMapper mapper = new TransactionMapper(CliService);
-		Map<LocalDate, Map<String, Double>> mappedData = mapper.mapTransactions(transactions);
-
-		// Step 3: Update Excel file
-		ExcelFileWriter excelWriter = new ExcelFileWriter(Config.getInstance().getInitialExcelPath());
-		excelWriter.updateExcel(mappedData, Config.getInstance()
-				.getOutputPath());
-	}
+        } catch (Exception e) {
+            logger.error("An error occurred during processing: ",
+                         e);
+        }
+        logger.info("Transaction Reader Application finished.");
+    }
 }
 

@@ -1,58 +1,95 @@
 package com.noslen.transaction_reader.io;
 
+import com.noslen.transaction_reader.config.Config;
+import com.noslen.transaction_reader.model.Transaction;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
-import java.io.*;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
 import java.time.LocalDate;
 import java.util.*;
+import java.util.stream.Collectors;
 
 public class ExcelFileWriter {
 
-    private final String budgetFilePath;
+    private static final Logger logger = LogManager.getLogger(ExcelFileWriter.class);
 
-    public ExcelFileWriter(String budgetFilePath) {
-        this.budgetFilePath = budgetFilePath;
+    private final String outputFilePath;
+
+    private final String initialFilePath;
+    private Workbook workbook;
+    private Sheet sheet;
+
+    public ExcelFileWriter() {
+        this.outputFilePath = Config.getInstance()
+                .getOutputPath();
+        this.initialFilePath = Config.getInstance()
+                .getInitialExcelPath();
+        initializeWorkbook();
     }
 
-    public void updateExcel(Map<LocalDate, Map<String, Double>> mappedTransactions, String outputFilePath) {
-        try (FileInputStream fis = new FileInputStream(budgetFilePath);
-             Workbook workbook = new XSSFWorkbook(fis)) {
 
-            Sheet sheet = workbook.getSheet("2025");
-
-            for (Map.Entry<LocalDate, Map<String, Double>> entry : mappedTransactions.entrySet()) {
-                LocalDate transactionDate = entry.getKey();
-                Map<String, Double> categoryAmounts = entry.getValue();
-
-                int rowIndex = findRowForDate(sheet, transactionDate);
-                if (rowIndex == -1) {
-                    System.err.println("No matching row for date: " + transactionDate);
-                    continue;
-                }
-
-                for (Map.Entry<String, Double> categoryEntry : categoryAmounts.entrySet()) {
-                    String category = categoryEntry.getKey();
-                    double amount = categoryEntry.getValue();
-
-                    int columnIndex = findColumnForCategory(sheet, category);
-                    if (columnIndex == -1) {
-                        System.err.println("No matching column for category: " + category);
-                        continue;
-                    }
-
-                    updateCellWithFormula(sheet, rowIndex, columnIndex, amount);
-                }
+    private void initializeWorkbook() {
+        try {
+            File file = new File(initialFilePath);
+            if (file.exists()) {
+                FileInputStream fis = new FileInputStream(file);
+                workbook = new XSSFWorkbook(fis);
+                sheet = workbook.getSheetAt(0); // Adjust index if needed
+                fis.close();
+            } else {
+                workbook = new XSSFWorkbook();
+                sheet = workbook.createSheet("2025");
             }
-
-            // Save updated workbook
-            try (FileOutputStream fos = new FileOutputStream(outputFilePath)) {
-                workbook.write(fos);
-                System.out.println("Budget file updated successfully: " + outputFilePath);
-            }
-
         } catch (IOException e) {
-            e.printStackTrace();
+            logger.error("Error initializing Excel file: ",
+                         e);
+        }
+    }
+
+    public void appendTransactionsToTable(List<Transaction> transactions) {
+        int startColumn = 19; // Column T
+        int startRow = findFirstEmptyCellInColumn(startColumn);
+        transactions.sort(Comparator.comparing(Transaction::getPostDate));
+        for (Transaction transaction : transactions) {
+            Row row = sheet.getRow(startRow);
+            if (row == null) row = sheet.createRow(startRow);
+
+            row.createCell(startColumn)
+                    .setCellValue(transaction.getPostDate()
+                                          .toString());
+            row.createCell(startColumn + 2)
+                    .setCellValue(transaction.getDescription());
+            row.createCell(startColumn + 3)
+                    .setCellValue(transaction.getDebit());
+            row.createCell(startColumn + 4)
+                    .setCellValue(transaction.getCredit());
+            row.createCell(startColumn + 6)
+                    .setCellValue(transaction.getBalance());
+            row.createCell(startColumn + 7)
+                    .setCellValue(transaction.getClassification());
+
+            startRow++; // Move to next row
+        }
+    }
+
+    private int findFirstEmptyCellInColumn(int columnIndex) {
+        int rowIndex = 1;
+
+        while (true) {
+            Row row = sheet.getRow(rowIndex);
+            if (row == null) return rowIndex;
+
+            Cell cell = row.getCell(columnIndex);
+            if (cell == null || cell.getCellType() == CellType.BLANK || cell.toString().trim().isEmpty()) {
+                return rowIndex;
+            }
+            rowIndex++;
         }
     }
 
@@ -60,7 +97,8 @@ public class ExcelFileWriter {
         for (Row row : sheet) {
             Cell cell = row.getCell(1); // Column B (index 1) contains dates
             if (cell != null && cell.getCellType() == CellType.NUMERIC && DateUtil.isCellDateFormatted(cell)) {
-                LocalDate rowDate = cell.getLocalDateTimeCellValue().toLocalDate();
+                LocalDate rowDate = cell.getLocalDateTimeCellValue()
+                        .toLocalDate();
                 if (rowDate.equals(date)) {
                     return row.getRowNum();
                 }
@@ -70,36 +108,102 @@ public class ExcelFileWriter {
     }
 
     private int findColumnForCategory(Sheet sheet, String category) {
-        Row headerRow = sheet.getRow(0); // Assuming categories are in the first row
+        Row headerRow = sheet.getRow(0);
+        if (headerRow == null) return -1;
+
         for (Cell cell : headerRow) {
-            if (cell.getCellType() == CellType.STRING && cell.getStringCellValue().equalsIgnoreCase(category)) {
+            if (cell.getCellType() == CellType.STRING && cell.getStringCellValue()
+                    .trim()
+                    .equalsIgnoreCase(category.trim())) {
                 return cell.getColumnIndex();
             }
         }
-        return -1; // Not found
+        return -1;
     }
+
+    public void saveWorkbook() {
+        try (FileOutputStream fos = new FileOutputStream(outputFilePath)) {
+            workbook.write(fos);
+            workbook.close();
+            logger.info("Excel file saved successfully: {}",
+                        outputFilePath);
+        } catch (IOException e) {
+            logger.error("Error saving Excel file: ",
+                         e);
+        }
+    }
+
+    public Sheet getSheet() {
+        return sheet;
+    }
+
+//    public void mapTransactionsToCategories(Sheet sheet, List<Transaction> transactions) {
+//        Map<LocalDate, Map<String, List<Integer>>> categoryReferences = new HashMap<>();
+//
+//        for (Transaction transaction : transactions) {
+//            LocalDate date = transaction.getPostDate();
+//            String category = transaction.getClassification();
+//            int rowIndex = findRowForDate(sheet,
+//                                          date);
+//            int categoryColumnIndex = findColumnForCategory(sheet,
+//                                                            category);
+//
+//            if (rowIndex == -1 || categoryColumnIndex == -1) continue;
+//
+//            String referenceColumn = transaction.getDebit() > 0 ? "W" : "X";
+//            int excelRowIndex = rowIndex + 1;
+//
+//            categoryReferences.computeIfAbsent(date,
+//                                               k -> new HashMap<>())
+//                    .computeIfAbsent(category,
+//                                     k -> new ArrayList<>())
+//                    .add(excelRowIndex);
+//        }
+//
+//        // Sum formulas per (date, category)
+//        for (Map.Entry<LocalDate, Map<String, List<Integer>>> dateEntry : categoryReferences.entrySet()) {
+//            for (Map.Entry<String, List<Integer>> categoryEntry : dateEntry.getValue()
+//                    .entrySet()) {
+//                int rowIndex = findRowForDate(sheet,
+//                                              dateEntry.getKey());
+//                int categoryColumnIndex = findColumnForCategory(sheet,
+//                                                                categoryEntry.getKey());
+//
+//                String sumFormula = categoryEntry.getValue()
+//                        .stream()
+//                        .map(rowNum -> "-W" + rowNum)
+//                        .collect(Collectors.joining(" + "));
+//
+//                Row row = sheet.getRow(rowIndex);
+//                if (row == null) row = sheet.createRow(rowIndex);
+//                Cell cell = row.createCell(categoryColumnIndex);
+//                cell.setCellFormula(sumFormula);
+//            }
+//        }
+//    }
 
     /**
      * Update the cell with an Excel formula referencing the debit/credit column.
      * - Debits use `=-W2`
      * - Credits use `=X3`
      */
-    private void updateCellWithFormula(Sheet sheet, int rowIndex, int columnIndex, double amount) {
-        Row row = sheet.getRow(rowIndex);
-        if (row == null) row = sheet.createRow(rowIndex);
-
-        Cell cell = row.getCell(columnIndex, Row.MissingCellPolicy.CREATE_NULL_AS_BLANK);
-
-        String referenceColumn = amount < 0 ? "Z" : "AA"; // W for debits, X for credits
-        int excelRowIndex = rowIndex + 1; // Excel rows are 1-based
-
-        String newFormula = referenceColumn + excelRowIndex;
-
-        // If the cell already has a formula, append the new reference
-        if (cell.getCellType() == CellType.FORMULA) {
-            newFormula = cell.getCellFormula() + " + " + newFormula;
-        }
-
-        cell.setCellFormula(newFormula);
-    }
+//    private void updateCellWithFormula(Sheet sheet, int rowIndex, int columnIndex, double amount) {
+//        Row row = sheet.getRow(rowIndex);
+//        if (row == null) row = sheet.createRow(rowIndex);
+//
+//        Cell cell = row.getCell(columnIndex,
+//                                Row.MissingCellPolicy.CREATE_NULL_AS_BLANK);
+//
+//        String referenceColumn = amount < 0 ? "Z" : "AA"; // W for debits, X for credits
+//        int excelRowIndex = rowIndex + 1; // Excel rows are 1-based
+//
+//        String newFormula = referenceColumn + excelRowIndex;
+//
+//        // If the cell already has a formula, append the new reference
+//        if (cell.getCellType() == CellType.FORMULA) {
+//            newFormula = cell.getCellFormula() + " + " + newFormula;
+//        }
+//
+//        cell.setCellFormula(newFormula);
+//    }
 }
