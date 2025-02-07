@@ -12,8 +12,8 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
-import java.util.stream.Collectors;
 
 public class ExcelFileWriter {
 
@@ -24,6 +24,7 @@ public class ExcelFileWriter {
     private final String initialFilePath;
     private Workbook workbook;
     private Sheet sheet;
+    private int startRowIndex;
 
     public ExcelFileWriter() {
         this.outputFilePath = Config.getInstance()
@@ -54,11 +55,12 @@ public class ExcelFileWriter {
 
     public void appendTransactionsToTable(List<Transaction> transactions) {
         int startColumn = 19; // Column T
-        int startRow = findFirstEmptyCellInColumn(startColumn);
+        int nextRow = findFirstEmptyCellInColumn(startColumn);
+        this.startRowIndex = nextRow;
         transactions.sort(Comparator.comparing(Transaction::getPostDate));
         for (Transaction transaction : transactions) {
-            Row row = sheet.getRow(startRow);
-            if (row == null) row = sheet.createRow(startRow);
+            Row row = sheet.getRow(nextRow);
+            if (row == null) row = sheet.createRow(nextRow);
 
             row.createCell(startColumn)
                     .setCellValue(transaction.getPostDate()
@@ -74,24 +76,103 @@ public class ExcelFileWriter {
             row.createCell(startColumn + 7)
                     .setCellValue(transaction.getClassification());
 
-            startRow++; // Move to next row
+            nextRow++;
         }
     }
 
     private int findFirstEmptyCellInColumn(int columnIndex) {
         int rowIndex = 1;
 
-        while (true) {
+        while (rowIndex <= sheet.getLastRowNum()) {
             Row row = sheet.getRow(rowIndex);
-            if (row == null) return rowIndex;
+            if (row == null) {
+                return rowIndex;
+            }
 
             Cell cell = row.getCell(columnIndex);
-            if (cell == null || cell.getCellType() == CellType.BLANK || cell.toString().trim().isEmpty()) {
-                return rowIndex;
+            if (cell == null || cell.getCellType() == CellType.BLANK || cell.toString()
+                    .trim()
+                    .isEmpty()) {
+                break;
             }
             rowIndex++;
         }
+        return rowIndex - 1;
     }
+
+    public Map<LocalDate, Map<String, List<String>>> collectTransactionRefs() {
+        Map<LocalDate, Map<String, List<String>>> transactionMappings = new HashMap<>();
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+        int columnIndex = 19;
+        int lastRow = findFirstEmptyCellInColumn(columnIndex);
+
+        List<String> categories = Config.getInstance()
+                .getCategoryList();
+
+        logger.info("Reading transactions from Excel up to row {}...",
+                    lastRow);
+
+        for (int rowIndex = startRowIndex; rowIndex <= lastRow; rowIndex++) {
+            Row row = sheet.getRow(rowIndex);
+            if (row == null) continue;
+
+            Cell dateCell = row.getCell(columnIndex);
+
+            if (dateCell != null && dateCell.getCellType() == CellType.STRING) {
+                try {
+                    LocalDate postDate = LocalDate.parse(dateCell.getStringCellValue(),
+                                                         formatter);
+                    transactionMappings.putIfAbsent(postDate,
+                                                    new HashMap<>());
+
+//                    for (String category : categories) {
+//                        transactionMappings.get(postDate).put(category, new ArrayList<>());
+//                    }
+                    categories.forEach(c -> transactionMappings.get(postDate)
+                            .put(c,
+                                 new ArrayList<>()));
+                    logger.debug("Mapped transaction date: {} with empty categories",
+                                 postDate);
+                    transactionMappings.entrySet()
+                            .forEach(e -> logger.info(e.toString()));
+                } catch (Exception e) {
+                    logger.warn("Skipping invalid date format in row {}: {}",
+                                rowIndex,
+                                dateCell.getStringCellValue());
+                }
+            }
+        }
+
+        for (int rowIndex = startRowIndex; rowIndex <= lastRow; rowIndex++) {
+            Row row = sheet.getRow(rowIndex);
+            Cell dateCell = row.getCell(columnIndex);
+            Cell categoryCell = row.getCell(columnIndex + 7);
+            boolean isDebit = row.getCell(columnIndex).getNumericCellValue() > 0;
+
+            if (dateCell != null && dateCell.getCellType() == CellType.STRING) {
+                try {
+                    LocalDate postDate = LocalDate.parse(dateCell.getStringCellValue(),
+                                                         formatter);
+                    Map<String, List<String>> dateCategories = transactionMappings.get(postDate);
+                    List<String> cellRefs = dateCategories.get(categoryCell.getStringCellValue());
+                    String ref = isDebit ? "-W" + rowIndex + 1 : "X" + (rowIndex + 1);
+                    cellRefs.add(ref);
+                } catch (Exception e) {
+                    logger.warn("Skipping invalid date format in row {}: {}",
+                                rowIndex,
+                                dateCell.getStringCellValue());
+                }
+            }
+
+        }
+
+        return transactionMappings;
+
+
+    }
+
+
+
 
     private int findRowForDate(Sheet sheet, LocalDate date) {
         for (Row row : sheet) {
@@ -107,7 +188,7 @@ public class ExcelFileWriter {
         return -1; // Not found
     }
 
-    private int findColumnForCategory(Sheet sheet, String category) {
+    private int findColumnForCategory(String category) {
         Row headerRow = sheet.getRow(0);
         if (headerRow == null) return -1;
 

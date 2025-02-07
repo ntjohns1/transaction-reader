@@ -27,6 +27,7 @@ public class TransactionReaderApplication {
 			TransactionMapper mapper = new TransactionMapper(CliService);
 			mapper.categorizeTransactions(transactions);
             excelWriter.appendTransactionsToTable(transactions);
+            excelWriter.collectTransactionRefs();
             excelWriter.saveWorkbook();
             logger.info("Transactions written to output file successfully.");
 
