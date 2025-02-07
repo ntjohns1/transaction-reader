@@ -2,6 +2,7 @@ package com.noslen.transaction_reader.io;
 
 import com.noslen.transaction_reader.config.Config;
 import com.noslen.transaction_reader.model.Transaction;
+import com.noslen.transaction_reader.service.CliService;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.poi.ss.usermodel.*;
@@ -22,16 +23,22 @@ public class ExcelFileWriter {
     private final String outputFilePath;
 
     private final String initialFilePath;
+
+    private final Config config;
+
+    private final CliService cliService;
     private Workbook workbook;
     private Sheet sheet;
     private int startRowIndex;
 
-    public ExcelFileWriter() {
+    public ExcelFileWriter(CliService cliService) {
         this.outputFilePath = Config.getInstance()
                 .getOutputPath();
         this.initialFilePath = Config.getInstance()
                 .getInitialExcelPath();
         initializeWorkbook();
+        this.cliService = cliService;
+        this.config = Config.getInstance();
     }
 
 
@@ -50,6 +57,13 @@ public class ExcelFileWriter {
         } catch (IOException e) {
             logger.error("Error initializing Excel file: ",
                          e);
+        }
+    }
+
+    public void categorizeTransactions(List<Transaction> transactions) {
+        for (Transaction transaction : transactions) {
+            String category = cliService.promptForCategory(transaction, config.getCategoryList());
+            transaction.setClassification(category);
         }
     }
 

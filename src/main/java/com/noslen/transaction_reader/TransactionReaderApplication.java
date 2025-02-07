@@ -1,6 +1,5 @@
 package com.noslen.transaction_reader;
 
-import com.noslen.transaction_reader.config.Config;
 import com.noslen.transaction_reader.io.ExcelFileWriter;
 import com.noslen.transaction_reader.io.InputParser;
 import com.noslen.transaction_reader.model.Transaction;
@@ -21,11 +20,11 @@ public class TransactionReaderApplication {
             List<Transaction> transactions = InputParser.parseTransactions();
             logger.info("Parsed {} transactions from test CSV.",
                         transactions.size());
-            ExcelFileWriter excelWriter = new ExcelFileWriter();
             // Step 2: Map transactions to categories
-			CliService CliService = new CliService();
-			TransactionMapper mapper = new TransactionMapper(CliService);
-			mapper.categorizeTransactions(transactions);
+			CliService cliService = new CliService();
+            ExcelFileWriter excelWriter = new ExcelFileWriter(cliService);
+			TransactionMapper mapper = new TransactionMapper();
+			excelWriter.categorizeTransactions(transactions);
             excelWriter.appendTransactionsToTable(transactions);
             excelWriter.collectTransactionRefs();
             excelWriter.saveWorkbook();
