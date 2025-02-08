@@ -3,6 +3,7 @@ package com.noslen.transaction_reader.io;
 import com.noslen.transaction_reader.config.Config;
 import com.noslen.transaction_reader.model.Transaction;
 import com.noslen.transaction_reader.service.CliService;
+import com.noslen.transaction_reader.service.TransactionMapper;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.poi.ss.usermodel.*;
@@ -13,8 +14,9 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
-import java.util.*;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
 
 public class ExcelFileWriter {
 
@@ -27,11 +29,13 @@ public class ExcelFileWriter {
     private final Config config;
 
     private final CliService cliService;
+    private final TransactionMapper mapper;
     private Workbook workbook;
     private Sheet sheet;
     private int startRowIndex;
+    private int lastRowIndex;
 
-    public ExcelFileWriter(CliService cliService) {
+    public ExcelFileWriter(CliService cliService, TransactionMapper mapper) {
         this.outputFilePath = Config.getInstance()
                 .getOutputPath();
         this.initialFilePath = Config.getInstance()
@@ -39,6 +43,7 @@ public class ExcelFileWriter {
         initializeWorkbook();
         this.cliService = cliService;
         this.config = Config.getInstance();
+        this.mapper = mapper;
     }
 
 
@@ -48,7 +53,7 @@ public class ExcelFileWriter {
             if (file.exists()) {
                 FileInputStream fis = new FileInputStream(file);
                 workbook = new XSSFWorkbook(fis);
-                sheet = workbook.getSheetAt(0); // Adjust index if needed
+                sheet = workbook.getSheetAt(0);
                 fis.close();
             } else {
                 workbook = new XSSFWorkbook();
@@ -62,7 +67,8 @@ public class ExcelFileWriter {
 
     public void categorizeTransactions(List<Transaction> transactions) {
         for (Transaction transaction : transactions) {
-            String category = cliService.promptForCategory(transaction, config.getCategoryList());
+            String category = cliService.promptForCategory(transaction,
+                                                           config.getCategoryList());
             transaction.setClassification(category);
         }
     }
@@ -75,23 +81,65 @@ public class ExcelFileWriter {
         for (Transaction transaction : transactions) {
             Row row = sheet.getRow(nextRow);
             if (row == null) row = sheet.createRow(nextRow);
-
-            row.createCell(startColumn)
+            row.createCell(startColumn,
+                           CellType.STRING)
                     .setCellValue(transaction.getPostDate()
                                           .toString());
-            row.createCell(startColumn + 2)
+            row.createCell(startColumn + 2,
+                           CellType.STRING)
                     .setCellValue(transaction.getDescription());
-            row.createCell(startColumn + 3)
+            row.createCell(startColumn + 3,
+                           CellType.NUMERIC)
                     .setCellValue(transaction.getDebit());
-            row.createCell(startColumn + 4)
+            row.createCell(startColumn + 4,
+                           CellType.NUMERIC)
                     .setCellValue(transaction.getCredit());
-            row.createCell(startColumn + 6)
+            row.createCell(startColumn + 6,
+                           CellType.NUMERIC)
                     .setCellValue(transaction.getBalance());
-            row.createCell(startColumn + 7)
+            row.createCell(startColumn + 7,
+                           CellType.STRING)
                     .setCellValue(transaction.getClassification());
 
             nextRow++;
         }
+        this.lastRowIndex = nextRow;
+    }
+
+    public void writeTransactionMapToTable() {
+        Map<LocalDate, Map<String, List<String>>> transactionUpdates =
+                mapper.collectTransactionRefs(sheet, startRowIndex, lastRowIndex);
+
+        transactionUpdates.forEach((date, categoryMap) -> {
+            final int rowIndex = findRowForDate(date);
+
+            if (rowIndex == -1) {
+                logger.warn("No matching row found for date: {}", date);
+                return;
+            }
+
+            Row row = sheet.getRow(rowIndex);
+            if (row == null) row = sheet.createRow(rowIndex);
+
+            final Row finalRow = row;
+            categoryMap.forEach((category, references) -> {
+                final int columnIndex = findColumnForCategory(category);
+
+                if (columnIndex == -1) {
+                    logger.warn("No matching column found for category: {}", category);
+                    return;
+                }
+
+                Cell cell = finalRow.getCell(columnIndex, Row.MissingCellPolicy.CREATE_NULL_AS_BLANK);
+                if (!references.isEmpty()) {
+                    String refs = String.join(" + ", references);
+                    cell.setCellFormula(refs);
+                    logger.debug("Set formula '{}' at row {} column {}", refs, rowIndex, columnIndex);
+                } else {
+                    logger.warn("No references found for date {} in category {}", date, category);
+                }
+            });
+        });
     }
 
     private int findFirstEmptyCellInColumn(int columnIndex) {
@@ -114,81 +162,7 @@ public class ExcelFileWriter {
         return rowIndex - 1;
     }
 
-    public Map<LocalDate, Map<String, List<String>>> collectTransactionRefs() {
-        Map<LocalDate, Map<String, List<String>>> transactionMappings = new HashMap<>();
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-        int columnIndex = 19;
-        int lastRow = findFirstEmptyCellInColumn(columnIndex);
-
-        List<String> categories = Config.getInstance()
-                .getCategoryList();
-
-        logger.info("Reading transactions from Excel up to row {}...",
-                    lastRow);
-
-        for (int rowIndex = startRowIndex; rowIndex <= lastRow; rowIndex++) {
-            Row row = sheet.getRow(rowIndex);
-            if (row == null) continue;
-
-            Cell dateCell = row.getCell(columnIndex);
-
-            if (dateCell != null && dateCell.getCellType() == CellType.STRING) {
-                try {
-                    LocalDate postDate = LocalDate.parse(dateCell.getStringCellValue(),
-                                                         formatter);
-                    transactionMappings.putIfAbsent(postDate,
-                                                    new HashMap<>());
-
-//                    for (String category : categories) {
-//                        transactionMappings.get(postDate).put(category, new ArrayList<>());
-//                    }
-                    categories.forEach(c -> transactionMappings.get(postDate)
-                            .put(c,
-                                 new ArrayList<>()));
-                    logger.debug("Mapped transaction date: {} with empty categories",
-                                 postDate);
-                    transactionMappings.entrySet()
-                            .forEach(e -> logger.info(e.toString()));
-                } catch (Exception e) {
-                    logger.warn("Skipping invalid date format in row {}: {}",
-                                rowIndex,
-                                dateCell.getStringCellValue());
-                }
-            }
-        }
-
-        for (int rowIndex = startRowIndex; rowIndex <= lastRow; rowIndex++) {
-            Row row = sheet.getRow(rowIndex);
-            Cell dateCell = row.getCell(columnIndex);
-            Cell categoryCell = row.getCell(columnIndex + 7);
-            boolean isDebit = row.getCell(columnIndex).getNumericCellValue() > 0;
-
-            if (dateCell != null && dateCell.getCellType() == CellType.STRING) {
-                try {
-                    LocalDate postDate = LocalDate.parse(dateCell.getStringCellValue(),
-                                                         formatter);
-                    Map<String, List<String>> dateCategories = transactionMappings.get(postDate);
-                    List<String> cellRefs = dateCategories.get(categoryCell.getStringCellValue());
-                    String ref = isDebit ? "-W" + rowIndex + 1 : "X" + (rowIndex + 1);
-                    cellRefs.add(ref);
-                } catch (Exception e) {
-                    logger.warn("Skipping invalid date format in row {}: {}",
-                                rowIndex,
-                                dateCell.getStringCellValue());
-                }
-            }
-
-        }
-
-        return transactionMappings;
-
-
-    }
-
-
-
-
-    private int findRowForDate(Sheet sheet, LocalDate date) {
+    private int findRowForDate(LocalDate date) {
         for (Row row : sheet) {
             Cell cell = row.getCell(1); // Column B (index 1) contains dates
             if (cell != null && cell.getCellType() == CellType.NUMERIC && DateUtil.isCellDateFormatted(cell)) {
@@ -277,12 +251,7 @@ public class ExcelFileWriter {
 //        }
 //    }
 
-    /**
-     * Update the cell with an Excel formula referencing the debit/credit column.
-     * - Debits use `=-W2`
-     * - Credits use `=X3`
-     */
-//    private void updateCellWithFormula(Sheet sheet, int rowIndex, int columnIndex, double amount) {
+//    private void updateCellWithFormula(Sheet, int rowIndex, int columnIndex, double amount) {
 //        Row row = sheet.getRow(rowIndex);
 //        if (row == null) row = sheet.createRow(rowIndex);
 //

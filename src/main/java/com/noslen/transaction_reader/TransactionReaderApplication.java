@@ -22,11 +22,12 @@ public class TransactionReaderApplication {
                         transactions.size());
             // Step 2: Map transactions to categories
 			CliService cliService = new CliService();
-            ExcelFileWriter excelWriter = new ExcelFileWriter(cliService);
 			TransactionMapper mapper = new TransactionMapper();
+            ExcelFileWriter excelWriter = new ExcelFileWriter(cliService,
+                                                              mapper);
 			excelWriter.categorizeTransactions(transactions);
             excelWriter.appendTransactionsToTable(transactions);
-            excelWriter.collectTransactionRefs();
+            excelWriter.writeTransactionMapToTable();
             excelWriter.saveWorkbook();
             logger.info("Transactions written to output file successfully.");
 
