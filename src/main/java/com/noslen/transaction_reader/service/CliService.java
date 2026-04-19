@@ -8,7 +8,7 @@ import java.util.Scanner;
 public class CliService {
     public String promptForCategory(Transaction transaction, List<String> categoryList) {
         Scanner scanner = new Scanner(System.in);
-        System.out.println("\nSelect a category for the transaction:");
+        System.out.println("Select a category for the transaction:");
         System.out.println("Date: " + transaction.getPostDate() +
                                    " | Amount: " + formatAmount(transaction) +
                                    " | Description: " + transaction.getDescription());
@@ -29,6 +29,26 @@ public class CliService {
             choice = scanner.nextInt();
         }
 
+        return categoryList.get(choice - 1);
+    }
+
+    /** Prompt by raw description string, without a full Transaction object. */
+    public String promptForCategoryByDescription(String description, List<String> categoryList) {
+        Scanner scanner = new Scanner(System.in);
+        System.out.println("Select a category for: " + description);
+        System.out.println("---------------------------------------------");
+        for (int i = 0; i < categoryList.size(); i++) {
+            System.out.println((i + 1) + ". " + categoryList.get(i));
+        }
+        int choice = -1;
+        while (choice < 1 || choice > categoryList.size()) {
+            System.out.print("Enter the number corresponding to the category: ");
+            while (!scanner.hasNextInt()) {
+                System.out.println("Invalid input. Please enter a number between 1 and " + categoryList.size());
+                scanner.next();
+            }
+            choice = scanner.nextInt();
+        }
         return categoryList.get(choice - 1);
     }
 

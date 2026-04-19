@@ -19,12 +19,12 @@ public class TransactionMapper {
 
     private static final Logger logger = LogManager.getLogger(TransactionMapper.class);
 
-    public Map<LocalDate, Map<String, List<String>>> collectTransactionRefs(Sheet sheet, int startRow, int lastRow) {
+    public Map<LocalDate, Map<String, List<String>>> collectTransactionRefs(Sheet sheet, int lastRow) {
         Map<LocalDate, Map<String, List<String>>> transactionMappings = new HashMap<>();
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
         int columnIndex = 19;
 
-        for (int rowIndex = startRow; rowIndex <= lastRow; rowIndex++) {
+        for (int rowIndex = 2; rowIndex <= lastRow; rowIndex++) {
             Row row = sheet.getRow(rowIndex);
             if (row == null) continue;
 

@@ -39,7 +39,7 @@ public class InputParser {
                     double credit = nextLine[5].isEmpty() ? 0.0 : Double.parseDouble(nextLine[5]);
                     double balance = nextLine[7].isEmpty() ? 0.0 : Double.parseDouble(nextLine[7]);
 
-                    transactions.add(new Transaction(postDate, description, debit, credit, balance));
+                    transactions.add(new Transaction(postDate, description, debit, credit, balance, "ELFCU"));
 
                 } catch (Exception e) {
                     e.printStackTrace();

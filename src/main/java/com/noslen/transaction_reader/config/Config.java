@@ -1,118 +1,134 @@
 package com.noslen.transaction_reader.config;
 
-import org.apache.poi.ss.usermodel.*;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
+import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.util.HashMap;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 
+/**
+ * Reads configuration from {@code config.properties} in the working directory,
+ * with environment variables taking precedence over file values.
+ *
+ * Copy {@code config.properties.template} → {@code config.properties} and fill in
+ * your real paths. The {@code config.properties} file is gitignored — never commit
+ * it as it contains paths to personal financial data.
+ */
 public class Config {
-//    *** Example Usage: ***
-//    String inputFile = Config.getInstance().getInputPath();
 
+    private static final Logger logger = LogManager.getLogger(Config.class);
     private static Config instance;
-    private final String inputPath;
-    private final String outputPath;
-    private final String categoryFile;
-    private final String initialExcelPath;
 
+    // Paths
+    private final String initialExcelPath;
+    private final String outputPath;
+    private final String statementsDir;
+    private final String merchantsPath;
+
+    // Opening balances
+    private final double openingBalanceElfcu;
+    private final double openingBalanceChase;
+    private final double openingBalanceCc1;
+    private final double openingBalanceCc2;
+
+    // Category list (expense categories only — matches Ledger header columns I–V)
+    private final List<String> categoryList;
 
     private Config() {
-        this.inputPath = System.getenv("INPUT_FILE");
-        this.outputPath = System.getenv("OUTPUT_FILE");
-        this.initialExcelPath = System.getenv("BUDGET_EXCEL_FILE");
-        this.categoryFile = System.getenv("CATEGORY_FILE");
+        Properties props = loadPropertiesFile();
 
-        if (inputPath == null || outputPath == null || initialExcelPath == null || categoryFile ==null) {
-            throw new IllegalStateException("Missing required environment variables!");
-        }
+        this.initialExcelPath = require(props, "BUDGET_EXCEL_FILE",    "budget.excel.path");
+        this.outputPath       = get(props,     "OUTPUT_FILE",           "budget.output.path", initialExcelPath);
+        this.statementsDir    = require(props, "STATEMENTS_DIR",        "budget.statements.dir");
+        this.merchantsPath    = require(props, "MERCHANTS_FILE",        "budget.merchants.path");
+
+        this.openingBalanceElfcu  = getDouble(props, "OPENING_BALANCE_ELFCU",  "budget.opening.balance.elfcu",  178.33);
+        this.openingBalanceChase  = getDouble(props, "OPENING_BALANCE_CHASE",  "budget.opening.balance.chase",  0.00);
+        this.openingBalanceCc1    = getDouble(props, "OPENING_BALANCE_CC1",    "budget.opening.balance.cc1",    3412.49);
+        this.openingBalanceCc2    = getDouble(props, "OPENING_BALANCE_CC2",    "budget.opening.balance.cc2",    165.35);
+
+        String cats = get(props, "BUDGET_CATEGORIES", "budget.categories",
+                "Bills/Rent,Groceries,Restaurants,Car/Gas,Subscriptions,Entertainment," +
+                "Tech,Health/Fitness,Medical,Dispensary,Pets,Investments,Merchandise,Other");
+        this.categoryList = Arrays.asList(cats.split(","));
     }
 
     public static Config getInstance() {
-        if (instance == null) {
-            instance = new Config();
-        }
+        if (instance == null) instance = new Config();
         return instance;
     }
 
-    public String getInputPath() {
-        return inputPath;
+    // ── accessors ────────────────────────────────────────────────────────────
+
+    public String getInitialExcelPath()  { return initialExcelPath; }
+    public String getOutputPath()        { return outputPath; }
+    public String getStatementsDir()     { return statementsDir; }
+    public String getMerchantsPath()     { return merchantsPath; }
+
+    public Map<String, Double> getOpeningBalances() {
+        return Map.of(
+            "ELFCU", openingBalanceElfcu,
+            "Chase", openingBalanceChase,
+            "CC 1",  openingBalanceCc1,
+            "CC 2",  openingBalanceCc2
+        );
     }
 
-    public String getOutputPath() {
-        return outputPath;
-    }
+    public List<String> getCategoryList() { return categoryList; }
 
-    public String getInitialExcelPath() {
-        return initialExcelPath;
-    }
+    // Keep for backward compat with CliService
+    public String getInputPath() { return statementsDir; }
 
+    // ── internals ────────────────────────────────────────────────────────────
 
-    public Map<String, String> loadCategoryMappings() {
-        Map<String, String> categoryMap = new HashMap<>();
-        Properties properties = new Properties();
-
-        // Try loading from category file
-        try (FileInputStream fis = new FileInputStream(categoryFile)) {
-            properties.load(fis);
-            for (String key : properties.stringPropertyNames()) {
-                categoryMap.put(key, properties.getProperty(key));
+    private Properties loadPropertiesFile() {
+        Properties props = new Properties();
+        File configFile = new File("config.properties");
+        if (configFile.exists()) {
+            try (FileInputStream fis = new FileInputStream(configFile)) {
+                props.load(fis);
+                logger.info("Loaded config.properties from working directory.");
+            } catch (IOException e) {
+                logger.warn("Could not read config.properties: {}", e.getMessage());
             }
-        } catch (IOException ignored) {}
-
-        // If properties are empty, read from Excel
-        if (categoryMap.isEmpty()) {
-            categoryMap = loadCategoriesFromExcel();
-            saveCategoryMappings(categoryMap);
+        } else {
+            logger.info("No config.properties found — relying on environment variables.");
         }
-
-        return categoryMap;
+        return props;
     }
 
-    private Map<String, String> loadCategoriesFromExcel() {
-        Map<String, String> categoryMap = new HashMap<>();
-
-        try (FileInputStream fis = new FileInputStream(initialExcelPath);
-             Workbook workbook = new XSSFWorkbook(fis)) {
-
-            Sheet sheet = workbook.getSheetAt(0); // Assuming first sheet is used
-            Row headerRow = sheet.getRow(0); // Row 1 (Index 0)
-
-            if (headerRow != null) {
-                for (int i = 1; i <= 17; i++) { // Columns B to R
-                    Cell cell = headerRow.getCell(i);
-                    if (cell != null && cell.getCellType() == CellType.STRING) {
-                        String category = cell.getStringCellValue().trim();
-                        categoryMap.put(category, category); // Store category itself
-                    }
-                }
-            }
-
-        } catch (IOException e) {
-            e.printStackTrace();
-            System.err.println("Error loading categories from Excel.");
+    /** env var takes precedence; then props file; then throws if missing. */
+    private String require(Properties props, String envKey, String propKey) {
+        String val = get(props, envKey, propKey, null);
+        if (val == null) {
+            throw new IllegalStateException(
+                "Missing required config: set env var '" + envKey +
+                "' or add '" + propKey + "' to config.properties");
         }
-
-        return categoryMap;
+        return val;
     }
 
-    public void saveCategoryMappings(Map<String, String> categoryMap) {
-        Properties properties = new Properties();
-        properties.putAll(categoryMap);
-
-        try (FileOutputStream fos = new FileOutputStream(categoryFile)) {
-            properties.store(fos, "Transaction Category Mappings");
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+    private String get(Properties props, String envKey, String propKey, String defaultValue) {
+        String envVal = System.getenv(envKey);
+        if (envVal != null && !envVal.isBlank()) return envVal;
+        String propVal = props.getProperty(propKey);
+        if (propVal != null && !propVal.isBlank()) return propVal;
+        return defaultValue;
     }
 
-    public List<String> getCategoryList() {
-        return loadCategoryMappings().keySet().stream().toList();
+    private double getDouble(Properties props, String envKey, String propKey, double defaultValue) {
+        String raw = get(props, envKey, propKey, null);
+        if (raw == null) return defaultValue;
+        try {
+            return Double.parseDouble(raw.trim());
+        } catch (NumberFormatException e) {
+            logger.warn("Invalid double for {} / {}: '{}', using default {}", envKey, propKey, raw, defaultValue);
+            return defaultValue;
+        }
     }
 }

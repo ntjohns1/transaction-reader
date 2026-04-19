@@ -33,3 +33,22 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Financial Data — PII — never commit ###
+# Bank statement input files
+*.csv
+*.xls
+*.xlsx
+# Exception: keep the template properties file
+!config.properties.template
+
+# Generated output Excel
+output/
+
+# Local config with real file paths / credentials
+config.properties
+application-local.properties
+*.env
+
+# Merchant map (contains identifiable merchant names)
+src/main/resources/merchants.json

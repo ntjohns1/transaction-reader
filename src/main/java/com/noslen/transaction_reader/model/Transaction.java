@@ -8,15 +8,18 @@ public class Transaction {
     private final double debit;
     private final double credit;
     private final double balance;
+    private final String account;
     private String classification;
 
-    public Transaction(LocalDate postDate, String description, double debit, double credit, double balance) {
+    public Transaction(LocalDate postDate, String description, double debit, double credit,
+                       double balance, String account) {
         this.postDate = postDate;
         this.description = description;
         this.debit = debit;
         this.credit = credit;
         this.balance = balance;
-        this.classification = null; // Initially null, set later
+        this.account = account;
+        this.classification = null;
     }
 
     public LocalDate getPostDate() {
@@ -37,6 +40,10 @@ public class Transaction {
 
     public double getBalance() {
         return balance;
+    }
+
+    public String getAccount() {
+        return account;
     }
 
     public String getClassification() {
