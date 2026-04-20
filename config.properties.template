@@ -30,3 +30,34 @@ budget.opening.balance.cc2=165.35
 
 # ── Budget categories (comma-separated, must match Ledger sheet header row) ──
 budget.categories=Bills/Rent,Groceries,Restaurants,Car/Gas,Subscriptions,Entertainment,Tech,Health/Fitness,Medical,Dispensary,Pets,Investments,Merchandise,Other
+
+# ── Plaid integration (optional — replaces manual CSV downloads) ─────────────
+# Set plaid.enabled=true to fetch transactions directly from your banks via Plaid.
+# When enabled, budget.statements.dir is not required.
+#
+# Setup steps:
+#   1. Create a free developer account at https://dashboard.plaid.com
+#   2. Copy your client_id and secret from the dashboard
+#   3. Run Plaid Link once per institution to get access tokens:
+#      - Use the Plaid Quickstart (https://github.com/plaid/quickstart) locally, or
+#      - Use sandbox test tokens: access-sandbox-<uuid> (for testing)
+#   4. After linking, find account IDs by calling /accounts/get with each access token
+#      and match the IDs to your two Discover cards
+#
+plaid.enabled=false
+plaid.environment=sandbox
+plaid.client.id=
+plaid.secret=
+
+# One access token per institution (obtained via Plaid Link)
+plaid.access.token.elfcu=
+plaid.access.token.chase=
+plaid.access.token.discover=
+
+# Plaid account IDs for your two Discover cards (from /accounts/get response)
+# Required to distinguish CC 1 (9577) from CC 2 (4914) within the same Discover connection
+plaid.account.id.cc1=
+plaid.account.id.cc2=
+
+# How many days back to fetch (default: 30)
+plaid.days=30
