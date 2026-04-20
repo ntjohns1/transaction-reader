@@ -1,0 +1,32 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Budget Automation — config.properties.template
+#
+# Copy this file to config.properties and fill in your real values.
+# config.properties is gitignored — never commit it (contains personal data).
+# Environment variables override any value set here.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Path to the target Budget Excel file (read as template, written as output)
+budget.excel.path=/path/to/Statements/Budget_2026.xlsx
+
+# Output path — can be the same as budget.excel.path to overwrite in place
+budget.output.path=/path/to/Statements/Budget_2026.xlsx
+
+# Directory containing bank statement subfolders:
+#   Chase/          ← .xlsx files
+#   Discover 4914/  ← .xlsx files  (CC 2)
+#   Discover 9577/  ← .xls files disguised as HTML  (CC 1)
+#   Elements/       ← .csv files  (ELFCU)
+budget.statements.dir=/path/to/Statements/
+
+# Path to merchants.json (key → category lookup map, NOT in repo)
+budget.merchants.path=/path/to/merchants.json
+
+# ── Account opening balances ─────────────────────────────────────────────────
+budget.opening.balance.elfcu=178.33
+budget.opening.balance.chase=0.00
+budget.opening.balance.cc1=3412.49
+budget.opening.balance.cc2=165.35
+
+# ── Budget categories (comma-separated, must match Ledger sheet header row) ──
+budget.categories=Bills/Rent,Groceries,Restaurants,Car/Gas,Subscriptions,Entertainment,Tech,Health/Fitness,Medical,Dispensary,Pets,Investments,Merchandise,Other

@@ -32,17 +32,14 @@ public class InputParser {
                 }
 
                 try {
-                    // Parse fields
                     LocalDate postDate = LocalDate.parse(nextLine[1].trim(), DATE_FORMATTER);
 
                     String description = nextLine[3].trim();
                     double debit = nextLine[4].isEmpty() ? 0.0 : Double.parseDouble(nextLine[4]);
                     double credit = nextLine[5].isEmpty() ? 0.0 : Double.parseDouble(nextLine[5]);
                     double balance = nextLine[7].isEmpty() ? 0.0 : Double.parseDouble(nextLine[7]);
-                    String classification = nextLine.length > 8 ? nextLine[8].trim() : "";
 
-                    // Create Transaction object
-                    transactions.add(new Transaction(postDate, description, debit, credit, balance));
+                    transactions.add(new Transaction(postDate, description, debit, credit, balance, "ELFCU"));
 
                 } catch (Exception e) {
                     e.printStackTrace();
@@ -55,4 +52,6 @@ public class InputParser {
 
         return transactions;
     }
+
+
 }
