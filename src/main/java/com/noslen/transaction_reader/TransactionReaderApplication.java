@@ -10,6 +10,7 @@ import org.apache.logging.log4j.Logger;
 
 import java.io.File;
 import java.io.IOException;
+import java.time.LocalDate;
 import java.util.*;
 
 public class TransactionReaderApplication {
@@ -30,16 +31,22 @@ public class TransactionReaderApplication {
         }
 
         try {
-            // ── Step 1: Discover statement files ─────────────────────────────
-            Map<String, List<String>> statementFiles = discoverStatements(config.getStatementsDir());
-            logger.info("Found statement files: {}", statementFiles);
-
-            // ── Step 2: Parse all statements ──────────────────────────────────
+            // ── Step 1 & 2: Fetch transactions (Plaid API or local CSV files) ─
             List<Transaction> allTransactions = new ArrayList<>();
-            allTransactions.addAll(parseWith(new ElfcuParser(),    statementFiles.get("ELFCU")));
-            allTransactions.addAll(parseWith(new ChaseParser(),    statementFiles.get("Chase")));
-            allTransactions.addAll(parseWith(new DiscoverParser(), statementFiles.get("Discover")));
-            logger.info("Parsed {} total transactions.", allTransactions.size());
+
+            if (config.isPlaidEnabled()) {
+                logger.info("Plaid mode enabled — fetching transactions from API.");
+                LocalDate endDate   = LocalDate.now();
+                LocalDate startDate = endDate.minusDays(config.getPlaidDays());
+                allTransactions.addAll(new PlaidClient(config).fetchTransactions(startDate, endDate));
+            } else {
+                Map<String, List<String>> statementFiles = discoverStatements(config.getStatementsDir());
+                logger.info("Found statement files: {}", statementFiles);
+                allTransactions.addAll(parseWith(new ElfcuParser(),    statementFiles.get("ELFCU")));
+                allTransactions.addAll(parseWith(new ChaseParser(),    statementFiles.get("Chase")));
+                allTransactions.addAll(parseWith(new DiscoverParser(), statementFiles.get("Discover")));
+            }
+            logger.info("Loaded {} total transactions.", allTransactions.size());
 
             if (allTransactions.isEmpty()) {
                 logger.warn("No transactions found — nothing to write.");
