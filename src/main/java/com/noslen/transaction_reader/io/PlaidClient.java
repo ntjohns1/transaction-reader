@@ -4,6 +4,7 @@ import com.noslen.transaction_reader.config.Config;
 import com.noslen.transaction_reader.model.Transaction;
 import com.plaid.client.ApiClient;
 import com.plaid.client.model.TransactionsGetRequest;
+import com.plaid.client.model.TransactionsGetRequestOptions;
 import com.plaid.client.model.TransactionsGetResponse;
 import com.plaid.client.request.PlaidApi;
 import org.apache.logging.log4j.LogManager;
@@ -46,20 +47,41 @@ public class PlaidClient {
         return all;
     }
 
+    /** Plaid's max page size for /transactions/get. */
+    private static final int PAGE_SIZE = 500;
+
     private List<Transaction> fetchForToken(String accessToken, String institutionLabel,
                                              LocalDate startDate, LocalDate endDate) throws IOException {
-        TransactionsGetRequest request = new TransactionsGetRequest()
-                .accessToken(accessToken)
-                .startDate(startDate)
-                .endDate(endDate);
+        // /transactions/get is paginated: a single call returns at most PAGE_SIZE (default 100)
+        // transactions. Loop on offset until we've collected getTotalTransactions() of them,
+        // otherwise accounts with many transactions silently lose the older ones.
+        List<com.plaid.client.model.Transaction> plaidTxns = new ArrayList<>();
+        int offset = 0;
+        int total;
+        do {
+            TransactionsGetRequest request = new TransactionsGetRequest()
+                    .accessToken(accessToken)
+                    .startDate(startDate)
+                    .endDate(endDate)
+                    .options(new TransactionsGetRequestOptions().count(PAGE_SIZE).offset(offset));
 
-        Response<TransactionsGetResponse> response = plaidApi.transactionsGet(request).execute();
-        if (!response.isSuccessful() || response.body() == null) {
-            logger.error("Plaid API error for {}: HTTP {}", institutionLabel, response.code());
-            return Collections.emptyList();
-        }
+            Response<TransactionsGetResponse> response = plaidApi.transactionsGet(request).execute();
+            if (!response.isSuccessful() || response.body() == null) {
+                logger.error("Plaid API error for {} at offset {}: HTTP {}",
+                             institutionLabel, offset, response.code());
+                break;
+            }
 
-        List<com.plaid.client.model.Transaction> plaidTxns = response.body().getTransactions();
+            List<com.plaid.client.model.Transaction> page = response.body().getTransactions();
+            total = response.body().getTotalTransactions() != null
+                    ? response.body().getTotalTransactions() : page.size();
+            plaidTxns.addAll(page);
+            offset += page.size();
+
+            // Guard against a non-advancing response so we never loop forever.
+            if (page.isEmpty()) break;
+        } while (offset < total);
+
         logger.info("Received {} transactions from Plaid for {}", plaidTxns.size(), institutionLabel);
         return mapTransactions(plaidTxns, institutionLabel);
     }

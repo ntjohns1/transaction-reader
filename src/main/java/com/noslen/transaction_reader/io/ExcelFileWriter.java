@@ -49,7 +49,11 @@ public class ExcelFileWriter {
         "CC 2",  5    // F
     );
 
-    /** Accounts without a running-balance column in the source CSV — compute it with a formula. */
+    /**
+     * Accounts without a running-balance column in the source CSV — compute it with a formula.
+     * ELFCU and Chase CSV exports include a real Balance column, so they are NOT listed here and
+     * use their actual per-row balance instead.
+     */
     private static final Set<String> COMPUTED_BALANCE_ACCOUNTS = Set.of("CC 1", "CC 2");
 
     /** Account history sheet column indices. */
@@ -122,7 +126,6 @@ public class ExcelFileWriter {
 
     /**
      * Appends transactions for the given account to its dedicated sheet.
-     * Transactions are written newest-first (reversed before writing).
      * Data starts at row 2 (after header row 0 and opening balance row 1).
      */
     public void appendTransactionsToSheet(List<Transaction> transactions, String accountName) {
@@ -134,8 +137,11 @@ public class ExcelFileWriter {
 
         boolean computedBalance = COMPUTED_BALANCE_ACCOUNTS.contains(accountName);
 
-        // CC sheets: oldest-at-top so the running-balance formula chains downward
-        // from the opening-balance row (E2). Bank sheets: newest-at-top (existing layout).
+        // Sheets are written oldest-at-top (chronological, including intra-day) so the
+        // running-balance formula chains downward from the opening-balance row (E2).
+        // ELFCU and Chase CSV exports are newest-first, so reverse them; the Discover
+        // (CC 1/CC 2) exports are already oldest-first. A plain date sort can't fix
+        // intra-day order (no time component), so reverse the source instead.
         List<Transaction> ordered = new ArrayList<>(transactions);
         if (!computedBalance) {
             Collections.reverse(ordered);
@@ -188,6 +194,11 @@ public class ExcelFileWriter {
             logger.error("'2026 Ledger' sheet not found — cannot write formulas.");
             return;
         }
+
+        // Category cells accumulate refs from multiple accounts, so the first account to touch
+        // a cell overwrites any stale formula (e.g. left over in the template from a prior run)
+        // and later accounts append. Without this, re-runs double the refs already present.
+        Set<String> touchedCategoryCells = new HashSet<>();
 
         for (Map.Entry<String, Integer> entry : ACCOUNT_LEDGER_COLS.entrySet()) {
             String accountName     = entry.getKey();
@@ -268,11 +279,14 @@ public class ExcelFileWriter {
                     }
                     Cell cell = row.getCell(colIdx, Row.MissingCellPolicy.CREATE_NULL_AS_BLANK);
                     String newFormula = String.join(" + ", refs);
-                    // Append to any existing formula from another account
-                    if (cell.getCellType() == CellType.FORMULA) {
+                    // Append only to a formula this run already wrote (another account contributing
+                    // to the same date+category); otherwise overwrite any stale/prior-run formula.
+                    String cellKey = ledgerRow + ":" + colIdx;
+                    if (cell.getCellType() == CellType.FORMULA && touchedCategoryCells.contains(cellKey)) {
                         newFormula = cell.getCellFormula() + " + " + newFormula;
                     }
                     cell.setCellFormula(newFormula);
+                    touchedCategoryCells.add(cellKey);
                     logger.debug("Ledger[{},{}] = {}", ledgerRow, colIdx, newFormula);
                 });
             });
