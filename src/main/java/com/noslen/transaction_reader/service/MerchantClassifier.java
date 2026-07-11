@@ -42,12 +42,19 @@ public class MerchantClassifier {
         "^(sq \\*|tst\\*|sp \\*|paypal \\*|venmo\\s*|zelle\\s*|apple pay \\*|apple\\.com/bill\\s*)",
         Pattern.CASE_INSENSITIVE);
 
+    // Many bank exports append the transaction date to the description (e.g.
+    // "KROGER #819 COLUMBUS OH  04/16"). Stripping it keeps the merchant key stable
+    // across dates so the same merchant isn't re-learned on every new statement.
+    private static final Pattern TRAILING_DATE = Pattern.compile("\\s+\\d{1,2}/\\d{1,2}(/\\d{2,4})?\\s*$");
+
     private static final Pattern LONG_NUMBERS = Pattern.compile("\\b\\d{5,}\\b");
 
     private static final Pattern BUSINESS_SUFFIX = Pattern.compile(
         "\\s+(llc|inc|corp|co|ltd)\\.?\\s*$", Pattern.CASE_INSENSITIVE);
 
-    private static final Pattern TRAILING_STATE = Pattern.compile("\\s+[a-z]{2}$");
+    // Tolerate trailing whitespace so the state still strips after an interior
+    // reference number was removed (e.g. "...COLUMBUS OH  333446" → "...columbus").
+    private static final Pattern TRAILING_STATE = Pattern.compile("\\s+[a-z]{2}\\s*$");
 
     private static final Pattern NON_ALNUM = Pattern.compile("[^a-z0-9 ]");
 
@@ -56,6 +63,7 @@ public class MerchantClassifier {
     /** Ordered chain of transformations applied after shortcut checks. */
     private static final List<UnaryOperator<String>> PIPELINE = List.of(
         s -> PAYMENT_PREFIXES.matcher(s).replaceFirst(""),
+        s -> TRAILING_DATE.matcher(s).replaceFirst(""),
         s -> LONG_NUMBERS.matcher(s).replaceAll(""),
         s -> BUSINESS_SUFFIX.matcher(s).replaceAll(""),
         s -> TRAILING_STATE.matcher(s).replaceAll(""),
