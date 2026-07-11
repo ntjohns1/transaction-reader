@@ -52,3 +52,6 @@ application-local.properties
 
 # Merchant map (contains identifiable merchant names)
 src/main/resources/merchants.json
+
+# macOS
+.DS_Store
